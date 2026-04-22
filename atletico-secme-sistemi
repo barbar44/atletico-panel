@@ -1,0 +1,629 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { Search, Users, ClipboardCheck, Trophy, QrCode, UserPlus, Trash2, Download, CheckCircle2, AlertTriangle } from "lucide-react";
+
+const STORAGE_KEY = "atletico-swim-tryouts-v1";
+
+const defaultApplicants = [
+  {
+    id: "ATL-001",
+    athleteName: "Defne Kaya",
+    birthDate: "2018-05-14",
+    age: "7",
+    gender: "Kız",
+    parentName: "Ayşe Kaya",
+    phone: "0555 123 45 67",
+    email: "ayse@example.com",
+    emergencyPhone: "0555 444 22 11",
+    school: "Özel İzmir İlkokulu / 1. Sınıf",
+    swimExperience: "1-2 yıl",
+    previousTeam: "Yok",
+    licensedElsewhere: false,
+    permitAccepted: false,
+    note: "Su korkusu yok, haftada 2 gün kurs gördü.",
+    createdAt: new Date().toISOString(),
+    checkedIn: true,
+    checkInTime: "16:42",
+    judges: {
+      j1: { technique: 8, coordination: 8, athleticism: 7, discipline: 9, potential: 8, note: "Start komutlarını iyi dinliyor." },
+      j2: { technique: 7, coordination: 8, athleticism: 7, discipline: 8, potential: 8, note: "Tekniği gelişime açık." },
+    },
+  },
+  {
+    id: "ATL-002",
+    athleteName: "Kaan Demir",
+    birthDate: "2017-11-22",
+    age: "8",
+    gender: "Erkek",
+    parentName: "Mert Demir",
+    phone: "0555 777 88 99",
+    email: "mert@example.com",
+    emergencyPhone: "0555 222 11 00",
+    school: "Buca İlkokulu / 2. Sınıf",
+    swimExperience: "Hiç yok",
+    previousTeam: "Yok",
+    licensedElsewhere: false,
+    permitAccepted: false,
+    note: "Spora çok hevesli.",
+    createdAt: new Date().toISOString(),
+    checkedIn: false,
+    checkInTime: "",
+    judges: {
+      j1: { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" },
+      j2: { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" },
+    },
+  },
+];
+
+function uidFromIndex(index) {
+  return `ATL-${String(index + 1).padStart(3, "0")}`;
+}
+
+function loadState() {
+  if (typeof window === "undefined") return defaultApplicants;
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return defaultApplicants;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return defaultApplicants;
+  }
+}
+
+function saveState(data) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+}
+
+function sumJudge(judge) {
+  return Number(judge.technique || 0) + Number(judge.coordination || 0) + Number(judge.athleticism || 0) + Number(judge.discipline || 0) + Number(judge.potential || 0);
+}
+
+function overall(applicant) {
+  const scores = Object.values(applicant.judges || {}).map(sumJudge).filter(Boolean);
+  if (!scores.length) return 0;
+  return Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+}
+
+function decision(score) {
+  if (score >= 38) return "ASİL";
+  if (score >= 28) return "YEDEK";
+  return "GELİŞİM GRUBU";
+}
+
+function badgeVariant(decisionText) {
+  if (decisionText === "ASİL") return "default";
+  if (decisionText === "YEDEK") return "secondary";
+  return "outline";
+}
+
+function QRPanel({ applicant }) {
+  const payload = `ATLETICO|${applicant.id}|${applicant.athleteName}|${applicant.age} YAŞ|${applicant.parentName}|${applicant.phone}`;
+  return (
+    <div className="rounded-2xl border bg-white/5 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white/80">
+        <QrCode className="h-4 w-4" /> QR İçeriği
+      </div>
+      <div className="rounded-xl bg-black/30 p-3 font-mono text-xs leading-6 text-fuchsia-100 break-all">
+        {payload}
+      </div>
+      <p className="mt-3 text-xs text-white/60">
+        Bu prototipte QR verisi metin olarak hazırdır. Canlı yayında kamera ile okutma için aynı veri gerçek QR görseline dönüştürülebilir.
+      </p>
+    </div>
+  );
+}
+
+function StatsCard({ icon: Icon, title, value, sub }) {
+  return (
+    <Card className="border-white/10 bg-white/5 text-white shadow-2xl backdrop-blur">
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className="rounded-2xl bg-fuchsia-500/20 p-3 text-fuchsia-300">
+          <Icon className="h-6 w-6" />
+        </div>
+        <div>
+          <div className="text-sm text-white/60">{title}</div>
+          <div className="text-2xl font-bold">{value}</div>
+          <div className="text-xs text-white/50">{sub}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function AtleticoAltyapiSecmeWebSistemi() {
+  const [applicants, setApplicants] = useState(loadState);
+  const [tab, setTab] = useState("kayit");
+  const [search, setSearch] = useState("");
+  const [judgeTab, setJudgeTab] = useState("j1");
+  const [form, setForm] = useState({
+    athleteName: "",
+    birthDate: "",
+    age: "",
+    gender: "",
+    parentName: "",
+    phone: "",
+    email: "",
+    emergencyPhone: "",
+    school: "",
+    swimExperience: "",
+    previousTeam: "",
+    licensedElsewhere: false,
+    permitAccepted: false,
+    note: "",
+  });
+
+  useEffect(() => {
+    saveState(applicants);
+  }, [applicants]);
+
+  const filteredApplicants = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return applicants.filter((a) => {
+      if (!q) return true;
+      return [a.id, a.athleteName, a.parentName, a.phone, a.age].join(" ").toLowerCase().includes(q);
+    });
+  }, [applicants, search]);
+
+  const rankedApplicants = useMemo(() => {
+    return [...applicants].sort((a, b) => overall(b) - overall(a));
+  }, [applicants]);
+
+  const stats = useMemo(() => {
+    const checkedIn = applicants.filter((a) => a.checkedIn).length;
+    const licensed = applicants.filter((a) => a.licensedElsewhere).length;
+    const completed = applicants.filter((a) => overall(a) > 0).length;
+    return {
+      total: applicants.length,
+      checkedIn,
+      licensed,
+      completed,
+    };
+  }, [applicants]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newApplicant = {
+      ...form,
+      id: uidFromIndex(applicants.length),
+      createdAt: new Date().toISOString(),
+      checkedIn: false,
+      checkInTime: "",
+      judges: {
+        j1: { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" },
+        j2: { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" },
+        j3: { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" },
+      },
+    };
+    setApplicants((prev) => [...prev, newApplicant]);
+    setForm({
+      athleteName: "",
+      birthDate: "",
+      age: "",
+      gender: "",
+      parentName: "",
+      phone: "",
+      email: "",
+      emergencyPhone: "",
+      school: "",
+      swimExperience: "",
+      previousTeam: "",
+      licensedElsewhere: false,
+      permitAccepted: false,
+      note: "",
+    });
+    setTab("yonetim");
+  };
+
+  const updateJudge = (applicantId, judgeKey, field, value) => {
+    setApplicants((prev) =>
+      prev.map((a) =>
+        a.id === applicantId
+          ? {
+              ...a,
+              judges: {
+                ...a.judges,
+                [judgeKey]: {
+                  ...a.judges[judgeKey],
+                  [field]: value,
+                },
+              },
+            }
+          : a
+      )
+    );
+  };
+
+  const toggleCheckIn = (applicantId) => {
+    setApplicants((prev) =>
+      prev.map((a) =>
+        a.id === applicantId
+          ? {
+              ...a,
+              checkedIn: !a.checkedIn,
+              checkInTime: !a.checkedIn ? new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : "",
+            }
+          : a
+      )
+    );
+  };
+
+  const deleteApplicant = (applicantId) => {
+    setApplicants((prev) => prev.filter((a) => a.id !== applicantId));
+  };
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(applicants, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "atletico-tryout-data.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(217,70,239,0.22),_transparent_32%),linear-gradient(180deg,#130316_0%,#0a0a0f_100%)] text-white">
+      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="mb-8 overflow-hidden rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl">
+          <div className="grid gap-6 md:grid-cols-[1.5fr,1fr] md:items-center">
+            <div>
+              <Badge className="mb-4 rounded-full bg-fuchsia-600 px-4 py-1 text-white hover:bg-fuchsia-600">ATLETICO ALTYAPI SEÇME SİSTEMİ</Badge>
+              <h1 className="text-3xl font-black tracking-tight md:text-5xl">2 Mayıs Cumartesi · 17:00</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70 md:text-base">
+                7-8-9 yaş yüzme takımı altyapı seçmeleri için tasarlanmış modern kayıt, check-in, hakem değerlendirme ve canlı sıralama paneli.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3 text-sm text-white/70">
+                <span className="rounded-full border border-white/10 px-3 py-1">Kayıt Formu</span>
+                <span className="rounded-full border border-white/10 px-3 py-1">QR Hazırlığı</span>
+                <span className="rounded-full border border-white/10 px-3 py-1">Check-In</span>
+                <span className="rounded-full border border-white/10 px-3 py-1">Hakem Tablet Ekranı</span>
+                <span className="rounded-full border border-white/10 px-3 py-1">Canlı Sıralama</span>
+              </div>
+            </div>
+            <Card className="border-fuchsia-400/20 bg-black/30 text-white">
+              <CardHeader>
+                <CardTitle className="text-lg">Önemli Kural</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm leading-6 text-white/75">
+                <div className="flex items-start gap-2"><AlertTriangle className="mt-1 h-4 w-4 text-fuchsia-300" /> Başka kulüpte lisansı olan sporcular için onaylı izin yazısı zorunludur.</div>
+                <div className="flex items-start gap-2"><CheckCircle2 className="mt-1 h-4 w-4 text-fuchsia-300" /> Yönetim paneli eksik belge takibini ayrı gösterir.</div>
+              </CardContent>
+            </Card>
+          </div>
+        </motion.div>
+
+        <div className="mb-8 grid gap-4 md:grid-cols-4">
+          <StatsCard icon={Users} title="Toplam Başvuru" value={stats.total} sub="Kayıt oluşturan sporcu sayısı" />
+          <StatsCard icon={ClipboardCheck} title="Check-In" value={stats.checkedIn} sub="Seçme günü giriş yapanlar" />
+          <StatsCard icon={QrCode} title="Lisanslı Sporcu" value={stats.licensed} sub="İzin yazısı gerektiren kayıtlar" />
+          <StatsCard icon={Trophy} title="Puanlanan" value={stats.completed} sub="Hakem değerlendirmesi tamamlananlar" />
+        </div>
+
+        <Tabs value={tab} onValueChange={setTab} className="space-y-6">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2 md:grid-cols-5">
+            <TabsTrigger value="kayit" className="rounded-xl">Kayıt Formu</TabsTrigger>
+            <TabsTrigger value="yonetim" className="rounded-xl">Yönetim</TabsTrigger>
+            <TabsTrigger value="checkin" className="rounded-xl">Check-In</TabsTrigger>
+            <TabsTrigger value="hakem" className="rounded-xl">Hakem Paneli</TabsTrigger>
+            <TabsTrigger value="sonuc" className="rounded-xl">Canlı Sonuç</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="kayit">
+            <Card className="border-white/10 bg-white/5 text-white">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl"><UserPlus className="h-6 w-6 text-fuchsia-300" /> Başvuru Formu</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-2"><Label>Çocuğun Adı Soyadı</Label><Input required value={form.athleteName} onChange={(e) => setForm({ ...form, athleteName: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>Doğum Tarihi</Label><Input type="date" required value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>Yaş</Label><Select value={form.age} onValueChange={(v) => setForm({ ...form, age: v })}><SelectTrigger className="border-white/10 bg-black/20"><SelectValue placeholder="Seçiniz" /></SelectTrigger><SelectContent><SelectItem value="7">7</SelectItem><SelectItem value="8">8</SelectItem><SelectItem value="9">9</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Cinsiyet</Label><Select value={form.gender} onValueChange={(v) => setForm({ ...form, gender: v })}><SelectTrigger className="border-white/10 bg-black/20"><SelectValue placeholder="Seçiniz" /></SelectTrigger><SelectContent><SelectItem value="Kız">Kız</SelectItem><SelectItem value="Erkek">Erkek</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Veli Adı Soyadı</Label><Input required value={form.parentName} onChange={(e) => setForm({ ...form, parentName: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>Telefon</Label><Input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>E-posta</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>Acil Durum Telefonu</Label><Input value={form.emergencyPhone} onChange={(e) => setForm({ ...form, emergencyPhone: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2 md:col-span-2"><Label>Okul / Sınıf</Label><Input value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="space-y-2"><Label>Yüzme Deneyimi</Label><Select value={form.swimExperience} onValueChange={(v) => setForm({ ...form, swimExperience: v })}><SelectTrigger className="border-white/10 bg-black/20"><SelectValue placeholder="Seçiniz" /></SelectTrigger><SelectContent><SelectItem value="Hiç yok">Hiç yok</SelectItem><SelectItem value="1 yıldan az">1 yıldan az</SelectItem><SelectItem value="1-2 yıl">1-2 yıl</SelectItem><SelectItem value="2 yıl ve üzeri">2 yıl ve üzeri</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Önceki Kulüp / Kurum</Label><Input value={form.previousTeam} onChange={(e) => setForm({ ...form, previousTeam: e.target.value })} className="border-white/10 bg-black/20" /></div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 md:col-span-2">
+                    <div className="flex items-start gap-3">
+                      <Checkbox checked={form.licensedElsewhere} onCheckedChange={(v) => setForm({ ...form, licensedElsewhere: !!v })} />
+                      <div>
+                        <Label className="text-sm font-medium">Başka bir kulüpte lisansı var</Label>
+                        <p className="mt-1 text-sm text-white/60">İşaretlenirse onaylı izin yazısı uyarısı görünür.</p>
+                      </div>
+                    </div>
+                    {form.licensedElsewhere && (
+                      <div className="mt-4 flex items-start gap-3 rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-3">
+                        <Checkbox checked={form.permitAccepted} onCheckedChange={(v) => setForm({ ...form, permitAccepted: !!v })} />
+                        <div>
+                          <Label className="text-sm font-medium">Onaylı yazı getireceğini kabul ediyor</Label>
+                          <p className="mt-1 text-sm text-white/60">Seçme günü ilgili kulüpten alınmış onaylı izin yazısı teslim edilmelidir.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2 md:col-span-2"><Label>Ek Not</Label><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="min-h-28 border-white/10 bg-black/20" /></div>
+                  <div className="md:col-span-2 flex flex-wrap gap-3">
+                    <Button type="submit" className="rounded-2xl bg-fuchsia-600 px-8 hover:bg-fuchsia-700">Kaydı Oluştur</Button>
+                    <Button type="button" variant="outline" className="rounded-2xl border-white/10 bg-transparent" onClick={() => setForm({ athleteName: "", birthDate: "", age: "", gender: "", parentName: "", phone: "", email: "", emergencyPhone: "", school: "", swimExperience: "", previousTeam: "", licensedElsewhere: false, permitAccepted: false, note: "" })}>Temizle</Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="yonetim">
+            <Card className="border-white/10 bg-white/5 text-white">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-2xl">Başvuru Yönetimi</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  <div className="relative min-w-[260px]">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-white/40" />
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="İsim, ID, yaş veya veli ara" className="pl-10 border-white/10 bg-black/20" />
+                  </div>
+                  <Button onClick={exportJson} variant="outline" className="rounded-2xl border-white/10 bg-transparent"><Download className="mr-2 h-4 w-4" /> Veri indir</Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-hidden rounded-2xl border border-white/10">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/10 hover:bg-transparent">
+                        <TableHead>ID</TableHead>
+                        <TableHead>Sporcu</TableHead>
+                        <TableHead>Yaş</TableHead>
+                        <TableHead>Veli</TableHead>
+                        <TableHead>Lisans</TableHead>
+                        <TableHead>Check-In</TableHead>
+                        <TableHead>Puan</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredApplicants.map((a) => {
+                        const score = overall(a);
+                        return (
+                          <TableRow key={a.id} className="border-white/10">
+                            <TableCell>{a.id}</TableCell>
+                            <TableCell>
+                              <div className="font-medium">{a.athleteName}</div>
+                              <div className="text-xs text-white/50">{a.gender}</div>
+                            </TableCell>
+                            <TableCell>{a.age}</TableCell>
+                            <TableCell>
+                              <div>{a.parentName}</div>
+                              <div className="text-xs text-white/50">{a.phone}</div>
+                            </TableCell>
+                            <TableCell>
+                              {a.licensedElsewhere ? (
+                                <div className="space-y-1">
+                                  <Badge variant="secondary">Lisanslı</Badge>
+                                  <div className="text-xs text-white/55">{a.permitAccepted ? "Onay kutusu işaretli" : "Onay eksik"}</div>
+                                </div>
+                              ) : (
+                                <Badge variant="outline">Yok</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>{a.checkedIn ? <Badge>Geldi · {a.checkInTime}</Badge> : <Badge variant="outline">Bekleniyor</Badge>}</TableCell>
+                            <TableCell>
+                              <div className="font-semibold">{score}</div>
+                              <div className="text-xs text-white/50">{decision(score)}</div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="outline" className="mr-2 rounded-xl border-white/10 bg-transparent">Detay</Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl border-white/10 bg-[#120712] text-white">
+                                  <DialogHeader><DialogTitle>{a.athleteName} · {a.id}</DialogTitle></DialogHeader>
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2 text-sm text-white/70">
+                                      <div><strong>Sporcu:</strong> {a.athleteName}</div>
+                                      <div><strong>Yaş:</strong> {a.age}</div>
+                                      <div><strong>Veli:</strong> {a.parentName}</div>
+                                      <div><strong>Telefon:</strong> {a.phone}</div>
+                                      <div><strong>Okul:</strong> {a.school || "-"}</div>
+                                      <div><strong>Deneyim:</strong> {a.swimExperience || "-"}</div>
+                                      <div><strong>Önceki kulüp:</strong> {a.previousTeam || "-"}</div>
+                                      <div><strong>Not:</strong> {a.note || "-"}</div>
+                                    </div>
+                                    <QRPanel applicant={a} />
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                              <Button size="icon" variant="ghost" className="text-white/70 hover:text-white" onClick={() => deleteApplicant(a.id)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="checkin">
+            <Card className="border-white/10 bg-white/5 text-white">
+              <CardHeader>
+                <CardTitle className="text-2xl">Check-In Ekranı</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="rounded-2xl border border-dashed border-fuchsia-400/30 bg-fuchsia-500/10 p-4 text-sm text-white/70">
+                  Canlı kullanımda bu alan telefon kamerasıyla QR okuma modülüne bağlanır. Prototipte sporcu satırından manuel check-in yapılır.
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredApplicants.map((a) => (
+                    <Card key={a.id} className="border-white/10 bg-black/20 text-white">
+                      <CardContent className="p-5">
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-lg font-semibold">{a.athleteName}</div>
+                            <div className="text-sm text-white/55">{a.id} · {a.age} yaş</div>
+                          </div>
+                          {a.checkedIn ? <Badge>Geldi</Badge> : <Badge variant="outline">Bekleniyor</Badge>}
+                        </div>
+                        <div className="space-y-2 text-sm text-white/65">
+                          <div>Veli: {a.parentName}</div>
+                          <div>Telefon: {a.phone}</div>
+                          <div>Lisans: {a.licensedElsewhere ? "Var" : "Yok"}</div>
+                        </div>
+                        <div className="mt-4">
+                          <Button onClick={() => toggleCheckIn(a.id)} className="w-full rounded-2xl bg-fuchsia-600 hover:bg-fuchsia-700">
+                            {a.checkedIn ? `Check-In İptal (${a.checkInTime})` : "Geldi Olarak İşaretle"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="hakem">
+            <Card className="border-white/10 bg-white/5 text-white">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-2xl">Hakem Tablet Değerlendirme</CardTitle>
+                <Tabs value={judgeTab} onValueChange={setJudgeTab} className="w-full md:w-auto">
+                  <TabsList className="grid w-full grid-cols-3 bg-black/20 md:w-[360px]">
+                    <TabsTrigger value="j1">Hakem 1</TabsTrigger>
+                    <TabsTrigger value="j2">Hakem 2</TabsTrigger>
+                    <TabsTrigger value="j3">Hakem 3</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </CardHeader>
+              <CardContent className="grid gap-4 lg:grid-cols-2">
+                {filteredApplicants.map((a) => {
+                  const judge = a.judges?.[judgeTab] || { technique: 0, coordination: 0, athleticism: 0, discipline: 0, potential: 0, note: "" };
+                  return (
+                    <Card key={`${a.id}-${judgeTab}`} className="border-white/10 bg-black/20 text-white">
+                      <CardContent className="p-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <div className="text-lg font-semibold">{a.athleteName}</div>
+                            <div className="text-sm text-white/55">{a.id} · {a.age} yaş · {a.checkedIn ? "Check-in tamam" : "Henüz gelmedi"}</div>
+                          </div>
+                          <Badge variant="secondary">Toplam: {sumJudge(judge)}</Badge>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {[
+                            ["technique", "Teknik"],
+                            ["coordination", "Koordinasyon"],
+                            ["athleticism", "Atletizm"],
+                            ["discipline", "Disiplin"],
+                            ["potential", "Potansiyel"],
+                          ].map(([key, label]) => (
+                            <div className="space-y-2" key={key}>
+                              <div className="flex items-center justify-between text-sm"><Label>{label}</Label><span>{judge[key]}</span></div>
+                              <Input type="range" min="0" max="10" value={judge[key]} onChange={(e) => updateJudge(a.id, judgeTab, key, Number(e.target.value))} className="h-3 border-none bg-transparent p-0" />
+                            </div>
+                          ))}
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Hakem Notu</Label>
+                            <Textarea value={judge.note || ""} onChange={(e) => updateJudge(a.id, judgeTab, "note", e.target.value)} className="min-h-20 border-white/10 bg-black/20" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sonuc">
+            <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
+              <Card className="border-white/10 bg-white/5 text-white">
+                <CardHeader>
+                  <CardTitle className="text-2xl">Canlı Sıralama</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-hidden rounded-2xl border border-white/10">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-white/10 hover:bg-transparent">
+                          <TableHead>Sıra</TableHead>
+                          <TableHead>Sporcu</TableHead>
+                          <TableHead>Yaş</TableHead>
+                          <TableHead>Check-In</TableHead>
+                          <TableHead>Ortalama Puan</TableHead>
+                          <TableHead>Durum</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rankedApplicants.map((a, index) => {
+                          const score = overall(a);
+                          const d = decision(score);
+                          return (
+                            <TableRow key={a.id} className="border-white/10">
+                              <TableCell className="font-bold">{index + 1}</TableCell>
+                              <TableCell>
+                                <div className="font-medium">{a.athleteName}</div>
+                                <div className="text-xs text-white/50">{a.id}</div>
+                              </TableCell>
+                              <TableCell>{a.age}</TableCell>
+                              <TableCell>{a.checkedIn ? "Evet" : "Hayır"}</TableCell>
+                              <TableCell>
+                                <div className="font-semibold">{score}</div>
+                                <Progress value={score * 2.5} className="mt-2 h-2" />
+                              </TableCell>
+                              <TableCell><Badge variant={badgeVariant(d)}>{d}</Badge></TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="space-y-6">
+                <Card className="border-white/10 bg-white/5 text-white">
+                  <CardHeader><CardTitle>Karar Kriteri</CardTitle></CardHeader>
+                  <CardContent className="space-y-4 text-sm text-white/70">
+                    <div className="rounded-2xl border border-white/10 p-4">
+                      <div className="font-semibold text-white">ASİL</div>
+                      <div>38 puan ve üzeri</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 p-4">
+                      <div className="font-semibold text-white">YEDEK</div>
+                      <div>28 - 37.9 puan arası</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 p-4">
+                      <div className="font-semibold text-white">GELİŞİM GRUBU</div>
+                      <div>28 puan altı</div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-white/10 bg-white/5 text-white">
+                  <CardHeader><CardTitle>Notlar</CardTitle></CardHeader>
+                  <CardContent className="text-sm leading-7 text-white/70">
+                    Bu prototip local storage ile çalışır. Yani aynı tarayıcıda kayıtları saklar. Canlı yayına alınırken veritabanı, kullanıcı giriş sistemi, gerçek QR üretimi ve kamera ile okutma modülü eklenir.
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
